@@ -3,9 +3,12 @@ package com.example;
 import java.sql.*;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Scanner;
 import java.util.regex.Pattern;
 
 public class Main {
+
+    Scanner scanner = new Scanner(System.in);
 
     static void main(String[] args) {
         if (isDevMode(args)) {
@@ -28,13 +31,27 @@ public class Main {
 
         try (Connection connection = DriverManager.getConnection(jdbcUrl, dbUser, dbPass)) {
 
-            boolean authorized = login(connection);
+            while(true) {
+                //Scanner scanner = new Scanner(System.in);
+                boolean authorized = login(connection);
 
 
-            if (!authorized){
-                System.out.println("Invalid username or password");
-                System.exit(0);
+                if (!authorized) {
+                    System.out.println("Invalid username or password");
+                    System.out.println("press 0 to exit");
+                    while(true){
+                        String exit = scanner.nextLine().trim();
+                        if(exit.equals("0")){
+                            return;
+                        }
+                    }
+
+                }
+                else{
+                    break;
+                }
             }
+
 
             while(true) {
                 int option = promptMenu();
@@ -46,7 +63,9 @@ public class Main {
                     case 4 -> createAccount(connection);
                     case 5 -> updatePassword(connection);
                     case 6 -> deleteAccount(connection);
-                    case 0 -> System.exit(0);
+                    case 0 -> {
+                        return;
+                    }
 
                     default -> System.out.println("Invalid choice.\n");
                 }
@@ -60,8 +79,10 @@ public class Main {
 
 
     private boolean login(Connection connection) {
-        String unm = IO.readln("Username: ");
-        String pw = IO.readln("Password: ");
+        System.out.println("Username: ");
+        String unm = scanner.nextLine();
+        System.out.println("Password: ");
+        String pw = scanner.nextLine();
 
         String accQuery = "select count(*) from account where binary name = ? and binary password = ?";
         try(PreparedStatement statement = connection.prepareStatement(accQuery)){
@@ -133,7 +154,7 @@ public class Main {
     }
 
     private void missionsCountYear(Connection connection){
-        String missionYearQuery = "select count(*) from moon_mission where year(launch_date) = ?)";
+        String missionYearQuery = "select count(*) from moon_mission where year(launch_date) = ?";
         int year = getValidInt("Mission Year: ");
 
         try(PreparedStatement statement = connection.prepareStatement(missionYearQuery)){
@@ -220,28 +241,27 @@ public class Main {
         int id = getValidInt("User id: ");
         String newPassword = getValidPassword("New password: ");
 
-        String updatePwQuery = "update account set password = ? where id = ?";
+        String updatePwQuery = "update account set password = ? where user_id = ?";
 
         try (PreparedStatement statement = connection.prepareStatement(updatePwQuery)) {
-            statement.setInt(1, id);
-            statement.setString(2, newPassword);
+            statement.setString(1, newPassword);
+            statement.setInt(2, id);
 
             statement.executeUpdate();
 
-
-            System.out.println("\nPassword updated");
-
+            System.out.println("updated");
 
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
 
     }
 
     private void deleteAccount(Connection connection) {
         int id = getValidInt("User id: ");
 
-        String deleteAccQuery = "delete from account where id = ?";
+        String deleteAccQuery = "delete from account where user_id = ?";
 
         try (PreparedStatement statement = connection.prepareStatement(deleteAccQuery)) {
             statement.setInt(1, id);
@@ -249,7 +269,7 @@ public class Main {
             statement.executeUpdate();
 
 
-            System.out.println("\nAccount deleted");
+            System.out.println("deleted");
 
 
         } catch (SQLException e) {
@@ -260,7 +280,8 @@ public class Main {
     private int getValidInt(String prompt){
         while(true){
             try {
-                int option = Integer.parseInt(IO.readln("\n" + prompt));
+                System.out.println("\n" + prompt);
+                int option = Integer.parseInt(scanner.nextLine());
 
                 if (option >= 0) {
                     return option;
@@ -277,7 +298,8 @@ public class Main {
 
     private String getValidName(String prompt){
         while(true){
-            String name = IO.readln("\n" + prompt).trim();
+            System.out.println("\n" + prompt);
+            String name = scanner.nextLine().trim();
 
             if (name.isBlank()) {
                 System.out.println("\nCannot be blank");
@@ -293,7 +315,8 @@ public class Main {
 
     private String getValidSSN(String prompt){
         while(true){
-            String ssn = IO.readln("\n" + prompt).trim();
+            System.out.println("\n" + prompt);
+            String ssn = scanner.nextLine().trim();
 
             if (ssn.isBlank()) {
                 System.out.println("\nCannot be blank");
@@ -309,7 +332,8 @@ public class Main {
 
     private String getValidPassword(String prompt){
         while(true){
-            String pw = IO.readln("\n" + prompt);
+            System.out.println("\n" + prompt);
+            String pw = scanner.nextLine();
 
             if(pw.length() < 6){
                 System.out.println("Password must be at least 6 characters");

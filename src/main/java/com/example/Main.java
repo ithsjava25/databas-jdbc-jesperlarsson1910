@@ -1,7 +1,15 @@
 package com.example;
 
+import com.repo.AccountRepository;
+import com.repo.DTO.AccountDTO;
+import com.repo.DTO.MissionDTO;
+import com.repo.MoonMissionRepository;
+
+import javax.sql.DataSource;
 import java.sql.*;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
@@ -28,74 +36,69 @@ public class Main {
                             "as system properties (-Dkey=value) or environment variables.");
         }
 
-        try (Connection connection = DriverManager.getConnection(jdbcUrl, dbUser, dbPass)) {
-
-                boolean authorized = login(connection);
-
-
-                if (!authorized) {
-                    System.out.println("Invalid username or password");
-                    System.out.println("press 0 to exit");
-                    while(true){
-                        String exit = scanner.nextLine().trim();
-                        if(exit.equals("0")){
-                            return;
-                        }
-                    }
-                }
+        DataSource ds = new SimpleDriverManagerDataSource(
+                System.getProperty("APP_JDBC_URL"),
+                System.getProperty("APP_DB_USER"),
+                System.getProperty("APP_DB_PASS")
+        );
 
 
-            while(true) {
-                int option = promptMenu();
 
-                switch (option) {
-                    case 1 -> listMissions(connection);
-                    case 2 -> getMission(connection);
-                    case 3 -> missionsCountYear(connection);
-                    case 4 -> createAccount(connection);
-                    case 5 -> updatePassword(connection);
-                    case 6 -> deleteAccount(connection);
-                    case 0 -> {
-                        return;
-                    }
+        AccountRepository ac = new AccountRepository(ds);
+        MoonMissionRepository mmc = new MoonMissionRepository(ds);
 
-                    default -> System.out.println("Invalid choice.\n");
+
+
+        boolean authorized = login(ac);
+
+
+        if (!authorized) {
+            System.out.println("Invalid username or password");
+            System.out.println("press 0 to exit");
+            while(true){
+                String exit = scanner.nextLine().trim();
+                if(exit.equals("0")){
+                    return;
                 }
             }
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
         }
+
+
+        while(true) {
+            int option = promptMenu();
+
+            switch (option) {
+                case 1 -> listMissions(mmc);
+                case 2 -> getMission(mmc);
+                case 3 -> missionsCountYear(mmc);
+                case 4 -> createAccount(ac);
+                case 5 -> updatePassword(ac);
+                case 6 -> deleteAccount(ac);
+                case 0 -> {
+                    return;
+                }
+
+                default -> System.out.println("Invalid choice.\n");
+            }
+        }
+
+
 
     }
 
     /**
      * Prompts username and password, checks if the combination is present in accounts
      *
-     * @param connection
      * @return <code>true</code> if the name/password combo exists
      * <code>false</code> if either name/password isn't present
      */
-    private boolean login(Connection connection) {
+    private boolean login(AccountRepository ac) {
         System.out.println("Username: ");
         String unm = scanner.nextLine();
         System.out.println("Password: ");
         String pw = scanner.nextLine();
 
-        //Query count if a row has the username and password combo, binary ensures case sensitivity
-        String accQuery = "select count(*) from account where binary name = ? and binary password = ?";
-        try(PreparedStatement statement = connection.prepareStatement(accQuery)){
-            statement.setString(1, unm);
-            statement.setString(2, pw);
-
-            ResultSet rs = statement.executeQuery();
-
-            return rs.next() && rs.getInt("count(*)") == 1; //if the credentials are found count will return 1
-
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        return ac.matchCredentials(unm, pw);
     }
 
     /**
@@ -119,87 +122,58 @@ public class Main {
 
     /**
      * Lists all spacecraft from the moon_mission table
-     * @param connection
      */
-    private void listMissions(Connection connection){
-        String spaceshipQuery = "select spacecraft from moon_mission";
-        try(PreparedStatement statement = connection.prepareStatement(spaceshipQuery)){
+    private void listMissions(MoonMissionRepository mmc){
+        List<MissionDTO> missions = mmc.getAllMissions();
 
-            ResultSet rs = statement.executeQuery();
-            while(rs.next()) {
-                System.out.println(rs.getString("spacecraft"));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        for(MissionDTO mission : missions){
+            System.out.println(mission.spacecraft());
         }
     }
 
 
     /**
      * Prompts for a mission ID and prints its data is available
-     * @param connection
      * @see #getValidInt(String)
      */
-    private void getMission(Connection connection){
+    private void getMission(MoonMissionRepository mmc){
         int id = getValidInt("Mission Id: ");
 
-        String  missionQuery = "select * from moon_mission where mission_id = ?";
-        try(PreparedStatement statement = connection.prepareStatement(missionQuery)){
-            statement.setInt(1, id);
-
-            ResultSet rs = statement.executeQuery();
-
-            if(rs.next()) {
-                System.out.println(
-                        "\nSpacecraft: " + rs.getString("spacecraft") +
-                        "\nLaunch date: " + rs.getString("launch_date") +
-                        "\nCarrier rocket: " + rs.getString("carrier_rocket") +
-                        "\nOperator: " + rs.getString("operator") +
-                        "\nMission type: " + rs.getString("mission_type") +
-                        "\nOutcome: " + rs.getString("outcome"));
-            }
-            else  {
-                System.out.println("\nMission not found.");
-            }
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        Optional<MissionDTO> mission = mmc.getMissionById(id);
+        if(mission.isPresent()) {
+            MissionDTO m =  mission.get();
+            System.out.println(
+                    "\nSpacecraft: " + m.spacecraft() +
+                    "\nLaunch date: " + m.launchDate() +
+                    "\nCarrier rocket: " + m.carrierRocket() +
+                    "\nOperator: " + m.operator() +
+                    "\nMission type: " + m.missionType() +
+                    "\nOutcome: " + m.outcome());
+        }
+        else  {
+            System.out.println("\nMission not found.");
         }
     }
 
     /**
      * Prompts for a year and prints how many rows in moon_mission was launched then
-     * @param connection
      * @see #getValidInt(String)
      */
-    private void missionsCountYear(Connection connection){
-        String missionYearQuery = "select count(*) from moon_mission where year(launch_date) = ?";
+    private void missionsCountYear(MoonMissionRepository mmc){
         int year = getValidInt("Mission Year: ");
 
-        try(PreparedStatement statement = connection.prepareStatement(missionYearQuery)){
-            statement.setInt(1, year);
-
-            ResultSet rs = statement.executeQuery();
-
-            while(rs.next()) {
-                System.out.println("\nMissions in " + year + ": " + rs.getInt("count(*)"));
-            }
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        System.out.println("\nMissions in " + year + ": " + mmc.missionCount(year));
 
     }
 
     /**
      * Gives a flow for creating  a new account, asking for First and Last name, SSN and password
      * default accountname is assigned if available and promted for if not
-     * @param connection
      * @see #getValidName(String)
      * @see #getValidSSN(String)
      * @see #getValidPassword(String)
      */
-    private void createAccount(Connection connection) {
+    private void createAccount(AccountRepository ac) {
         String fn = getValidName("First Name: ");
         String ln = getValidName("Last Name: ");
         String ssn = getValidSSN("SSN: ");
@@ -219,48 +193,31 @@ public class Main {
             accName = fn.substring(0, 2) + ln.substring(0, 2);
         }
 
-        //Query to check if the accountname exists
-        String checkName = "select count(*) from account where name = ?";
+        //Check if the accountname exists
+        Optional<AccountDTO> nameCheck;
 
         while(true) {
-            try (PreparedStatement statement = connection.prepareStatement(checkName)) {
-                statement.setString(1, accName);
+            nameCheck = ac.getAccountByName(accName);
 
-                ResultSet rs = statement.executeQuery();
-
-
-                if(rs.next() && rs.getInt("count(*)") == 0){ //if accountname is available continue
+            if(nameCheck.isEmpty()){ //if accountname is available continue
                     break;
                 }
                 else{
                     accName = getValidName("Account Name: "); //if not prompt for a new accountname and check again
                     //todo add help method for accountname
                 }
-
-
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
         }
 
-        //Query to add account, ID is auto assigned
-        String newAccQuery = "INSERT INTO account (name, password, first_name, last_name, ssn) VALUES (?, ?, ?, ?, ?)";
+        //Create and add account
+        AccountDTO newAccount = new AccountDTO(0, accName, pw, fn, ln, ssn);
 
-        try (PreparedStatement statement = connection.prepareStatement(newAccQuery)) {
-            statement.setString(1, accName);
-            statement.setString(2, pw);
-            statement.setString(3, fn);
-            statement.setString(4, ln);
-            statement.setString(5, ssn);
+        ac.createAccount(newAccount);
 
-            statement.executeUpdate();
-
-            //todo check if new account is present
+        if(ac.accountExists(accName)){
             System.out.println("\nAccount created");
-
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        }
+        else{
+            System.out.println("\nAccount creation failed.");
         }
 
     }
@@ -268,53 +225,48 @@ public class Main {
 
     /**
      * Updates password after prompting for an ID and new password
-     * @param connection
      * @see #getValidInt(String)
      * @see #getValidPassword(String)
      */
-    private void updatePassword (Connection connection) {
+    private void updatePassword (AccountRepository ac) {
         int id = getValidInt("User id: "); //todo add check if account is present
-        String newPassword = getValidPassword("New password: ");
 
-        String updatePwQuery = "update account set password = ? where user_id = ?";
+        if(ac.accountExists(id)){
+            String newPassword = getValidPassword("New password: ");
 
-        try (PreparedStatement statement = connection.prepareStatement(updatePwQuery)) {
-            statement.setString(1, newPassword);
-            statement.setInt(2, id);
+            ac.updatePassword(id, newPassword);
 
-            statement.executeUpdate();
-
-            //todo add check if updated
-            System.out.println("updated");
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+            if(ac.matchCredentials(ac.getAccountByID(id).get().name(), newPassword)){
+                System.out.println("Password updated");
+            }
+            else {
+                System.out.println("Password update failed.");
+            }
         }
-
+        else{
+            System.out.println("Account not found.");
+        }
 
     }
 
     /**
      * Deletes account after prompting for an ID
-     * @param connection
      * @see #getValidInt(String)
      */
-    private void deleteAccount(Connection connection) {
-        int id = getValidInt("User id: "); //todo add check if account is present
+    private void deleteAccount(AccountRepository ac) {
+        int id = getValidInt("User id: ");
 
-        String deleteAccQuery = "delete from account where user_id = ?";
-
-        try (PreparedStatement statement = connection.prepareStatement(deleteAccQuery)) {
-            statement.setInt(1, id);
-
-            statement.executeUpdate();
-
-            //todo add check if deleted
-            System.out.println("deleted");
-
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        if(ac.accountExists(id)){
+            ac.deleteAccount(id);
+            if(!ac.accountExists(id)){
+                System.out.println("Account deleted");
+            }
+            else {
+                System.out.println("Account deletion failed.");
+            }
+        }
+        else {
+            System.out.println("Account not found.");
         }
     }
 

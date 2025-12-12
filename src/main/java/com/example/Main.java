@@ -2,13 +2,12 @@ package com.example;
 
 import java.sql.*;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
 public class Main {
 
-    Scanner scanner = new Scanner(System.in);
+    private final Scanner scanner = new Scanner(System.in);
 
     static void main(String[] args) {
         if (isDevMode(args)) {
@@ -31,8 +30,6 @@ public class Main {
 
         try (Connection connection = DriverManager.getConnection(jdbcUrl, dbUser, dbPass)) {
 
-            while(true) {
-                //Scanner scanner = new Scanner(System.in);
                 boolean authorized = login(connection);
 
 
@@ -45,12 +42,7 @@ public class Main {
                             return;
                         }
                     }
-
                 }
-                else{
-                    break;
-                }
-            }
 
 
             while(true) {
@@ -77,28 +69,40 @@ public class Main {
 
     }
 
-
+    /**
+     * Prompts username and password, checks if the combination is present in accounts
+     *
+     * @param connection
+     * @return <code>true</code> if the name/password combo exists
+     * <code>false</code> if either name/password isn't present
+     */
     private boolean login(Connection connection) {
         System.out.println("Username: ");
         String unm = scanner.nextLine();
         System.out.println("Password: ");
         String pw = scanner.nextLine();
 
+        //Query count if a row has the username and password combo, binary ensures case sensitivity
         String accQuery = "select count(*) from account where binary name = ? and binary password = ?";
         try(PreparedStatement statement = connection.prepareStatement(accQuery)){
             statement.setString(1, unm);
             statement.setString(2, pw);
 
             ResultSet rs = statement.executeQuery();
-            while(rs.next()) {
-                if(rs.getInt("count(*)") == 1){return true;}
-            }
-            return false;
+
+            return rs.next() && rs.getInt("count(*)") == 1; //if the credentials are found count will return 1
+
+
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
+    /**
+     * Prompts the menu options and returns a user input integer
+     * @return integer >= 0
+     * @see #getValidInt(String)
+     */
     private int promptMenu(){
         System.out.print("\n" +
                 "1) List moon missions (prints spacecraft names from `moon_mission`).\n" +
@@ -112,9 +116,13 @@ public class Main {
         return getValidInt("Enter Choice: ");
     }
 
+
+    /**
+     * Lists all spacecraft from the moon_mission table
+     * @param connection
+     */
     private void listMissions(Connection connection){
         String spaceshipQuery = "select spacecraft from moon_mission";
-
         try(PreparedStatement statement = connection.prepareStatement(spaceshipQuery)){
 
             ResultSet rs = statement.executeQuery();
@@ -126,10 +134,16 @@ public class Main {
         }
     }
 
+
+    /**
+     * Prompts for a mission ID and prints its data is available
+     * @param connection
+     * @see #getValidInt(String)
+     */
     private void getMission(Connection connection){
-        String  missionQuery = "select * from moon_mission where mission_id = ?";
         int id = getValidInt("Mission Id: ");
 
+        String  missionQuery = "select * from moon_mission where mission_id = ?";
         try(PreparedStatement statement = connection.prepareStatement(missionQuery)){
             statement.setInt(1, id);
 
@@ -153,6 +167,11 @@ public class Main {
         }
     }
 
+    /**
+     * Prompts for a year and prints how many rows in moon_mission was launched then
+     * @param connection
+     * @see #getValidInt(String)
+     */
     private void missionsCountYear(Connection connection){
         String missionYearQuery = "select count(*) from moon_mission where year(launch_date) = ?";
         int year = getValidInt("Mission Year: ");
@@ -172,28 +191,35 @@ public class Main {
 
     }
 
+    /**
+     * Gives a flow for creating  a new account, asking for First and Last name, SSN and password
+     * default accountname is assigned if available and promted for if not
+     * @param connection
+     * @see #getValidName(String)
+     * @see #getValidSSN(String)
+     * @see #getValidPassword(String)
+     */
     private void createAccount(Connection connection) {
         String fn = getValidName("First Name: ");
         String ln = getValidName("Last Name: ");
         String ssn = getValidSSN("SSN: ");
         String pw = getValidPassword("Password: ");
 
-        String accName;
-        if(fn.length() <= 3){
-            if(ln.length() <= 3){
-                accName = fn + ln;
-            }
-            else{
-                accName = fn + ln.substring(0, 2);
-            }
+        String accName; //Default accountname is first three letters of first and last name
+        if(fn.length() <= 3 && ln.length() <=3){    //if both first and last name are 3 or fewer letters
+            accName = fn + ln;}                     //accountname is both full combined
+
+        else if (fn.length() <= 3){                 //if only first name is 3 or fewer letters
+            accName = fn + ln.substring(0, 2);      //accountname is full first name and first 3 from last name
         }
-        else if(ln.length() <= 3){
-           accName = fn.substring(0, 3) + ln;
+        else if(ln.length() <= 3){                  //if only last name is 3 or fewer letters
+           accName = fn.substring(0, 2) + ln;       //accountname is first 3 from first name and full last name
         }
-        else{
-            accName = fn.substring(0, 3) + ln.substring(0, 3);
+        else{                                       //if both are longer than 3 accountname follows default pattern
+            accName = fn.substring(0, 2) + ln.substring(0, 2);
         }
 
+        //Query to check if the accountname exists
         String checkName = "select count(*) from account where name = ?";
 
         while(true) {
@@ -203,11 +229,12 @@ public class Main {
                 ResultSet rs = statement.executeQuery();
 
 
-                if(rs.next() && rs.getInt("count(*)") == 0){
+                if(rs.next() && rs.getInt("count(*)") == 0){ //if accountname is available continue
                     break;
                 }
                 else{
-                    accName = getValidName("Account Name: ");
+                    accName = getValidName("Account Name: "); //if not prompt for a new accountname and check again
+                    //todo add help method for accountname
                 }
 
 
@@ -216,7 +243,8 @@ public class Main {
             }
         }
 
-        String newAccQuery = "insert into account values (0, ?, ?, ?, ?, ?)";
+        //Query to add account, ID is auto assigned
+        String newAccQuery = "INSERT INTO account (name, password, first_name, last_name, ssn) VALUES (?, ?, ?, ?, ?)";
 
         try (PreparedStatement statement = connection.prepareStatement(newAccQuery)) {
             statement.setString(1, accName);
@@ -227,7 +255,7 @@ public class Main {
 
             statement.executeUpdate();
 
-
+            //todo check if new account is present
             System.out.println("\nAccount created");
 
 
@@ -237,8 +265,15 @@ public class Main {
 
     }
 
+
+    /**
+     * Updates password after prompting for an ID and new password
+     * @param connection
+     * @see #getValidInt(String)
+     * @see #getValidPassword(String)
+     */
     private void updatePassword (Connection connection) {
-        int id = getValidInt("User id: ");
+        int id = getValidInt("User id: "); //todo add check if account is present
         String newPassword = getValidPassword("New password: ");
 
         String updatePwQuery = "update account set password = ? where user_id = ?";
@@ -249,6 +284,7 @@ public class Main {
 
             statement.executeUpdate();
 
+            //todo add check if updated
             System.out.println("updated");
 
         } catch (SQLException e) {
@@ -258,8 +294,13 @@ public class Main {
 
     }
 
+    /**
+     * Deletes account after prompting for an ID
+     * @param connection
+     * @see #getValidInt(String)
+     */
     private void deleteAccount(Connection connection) {
-        int id = getValidInt("User id: ");
+        int id = getValidInt("User id: "); //todo add check if account is present
 
         String deleteAccQuery = "delete from account where user_id = ?";
 
@@ -268,7 +309,7 @@ public class Main {
 
             statement.executeUpdate();
 
-
+            //todo add check if deleted
             System.out.println("deleted");
 
 
@@ -277,6 +318,11 @@ public class Main {
         }
     }
 
+    /**
+     * Help method to get a valid and positive integer from input
+     * @param prompt message to explain what is asked
+     * @return integer >= 0
+     */
     private int getValidInt(String prompt){
         while(true){
             try {
@@ -296,6 +342,11 @@ public class Main {
         }
     }
 
+    /**
+     * Help method to get a valid string that only contains letters from input
+     * @param prompt message to explain what is asked
+     * @return Capitalized string with only letters
+     */
     private String getValidName(String prompt){
         while(true){
             System.out.println("\n" + prompt);
@@ -313,6 +364,11 @@ public class Main {
         }
     }
 
+    /**
+     * Help method to get a correctly formated SSN from input
+     * @param prompt message to explain what is asked
+     * @return String with YYMMDD-XXXX formatting
+     */
     private String getValidSSN(String prompt){
         while(true){
             System.out.println("\n" + prompt);
@@ -330,6 +386,11 @@ public class Main {
         }
     }
 
+    /**
+     * Help method to get a valid password from input
+     * @param prompt message to explain what is asked
+     * @return string of at least 6 characters
+     */
     private String getValidPassword(String prompt){
         while(true){
             System.out.println("\n" + prompt);

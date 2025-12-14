@@ -36,22 +36,16 @@ public class Main {
                             "as system properties (-Dkey=value) or environment variables.");
         }
 
-        DataSource ds = new SimpleDriverManagerDataSource(
-                System.getProperty("APP_JDBC_URL"),
-                System.getProperty("APP_DB_USER"),
-                System.getProperty("APP_DB_PASS")
-        );
-
-
+        //Setup datasource and repositories
+        DataSource ds = new SimpleDriverManagerDataSource(jdbcUrl, dbUser, dbPass);
 
         AccountRepository ac = new AccountRepository(ds);
         MoonMissionRepository mmc = new MoonMissionRepository(ds);
 
-
-
+        //Try logging in
         boolean authorized = login(ac);
 
-
+        //For tests, we don't care if it fails
         if (!authorized) {
             System.out.println("Invalid username or password");
             System.out.println("press 0 to exit");
@@ -63,7 +57,7 @@ public class Main {
             }
         }
 
-
+        /**Main loop**/
         while(true) {
             int option = promptMenu();
 
@@ -95,11 +89,12 @@ public class Main {
     private boolean login(AccountRepository ac) {
         System.out.println("Username: ");
         String unm = scanner.nextLine();
-        System.out.println("Password: ");
+        System.out.println("Password: "); //DB has pw in plaintext so we do too
         String pw = scanner.nextLine();
 
         return ac.matchCredentials(unm, pw);
     }
+
 
     /**
      * Prompts the menu options and returns a user input integer
@@ -203,8 +198,7 @@ public class Main {
                     break;
                 }
                 else{
-                    accName = getValidName("Account Name: "); //if not prompt for a new accountname and check again
-                    //todo add help method for accountname
+                    accName = getValidUsername("Account Name: "); //if not prompt for a new accountname and check again
                 }
         }
 
@@ -213,6 +207,7 @@ public class Main {
 
         ac.createAccount(newAccount);
 
+        //check that account is present
         if(ac.accountExists(accName)){
             System.out.println("\nAccount created");
         }
@@ -229,14 +224,15 @@ public class Main {
      * @see #getValidPassword(String)
      */
     private void updatePassword (AccountRepository ac) {
-        int id = getValidInt("User id: "); //todo add check if account is present
+        int id = getValidInt("User id: ");
 
         if(ac.accountExists(id)){
             String newPassword = getValidPassword("New password: ");
 
             ac.updatePassword(id, newPassword);
 
-            if(ac.matchCredentials(ac.getAccountByID(id).get().name(), newPassword)){
+            //confirm that the new password has been added
+            if(ac.accountExists(id) && ac.matchCredentials(ac.getAccountByID(id).get().name(), newPassword)){
                 System.out.println("Password updated");
             }
             else {
@@ -322,6 +318,14 @@ public class Main {
      * @return String with YYMMDD-XXXX formatting
      */
     private String getValidSSN(String prompt){
+        //semi robust ssn pattern
+        Pattern SSN_PATTERN = Pattern.compile(
+                        "^(\\d{2})" +                  // YY
+                        "(0[1-9]|1[0-2])" +            // MM (01-12)
+                        "(0[1-9]|[12]\\d|3[01])" +     // DD (01-31)
+                        "-\\d{4}"                      // Last 4
+        );
+
         while(true){
             System.out.println("\n" + prompt);
             String ssn = scanner.nextLine().trim();
@@ -329,7 +333,7 @@ public class Main {
             if (ssn.isBlank()) {
                 System.out.println("\nCannot be blank");
             }
-            else if(!Pattern.matches("^\\d{6}-\\d{4}$", ssn)){
+            else if(!SSN_PATTERN.matcher(ssn).matches()){
                 System.out.println("\nMust follow pattern YYMMDD-XXXX");
             }
             else {
@@ -348,11 +352,30 @@ public class Main {
             System.out.println("\n" + prompt);
             String pw = scanner.nextLine();
 
-            if(pw.length() < 6){
+            if(pw.length() < 6){ //6 letters as an arbitrary constraint
                 System.out.println("Password must be at least 6 characters");
             }
             else{
                 return pw;
+            }
+        }
+    }
+
+    /**
+     * Help method to get a valid username from input
+     * @param prompt message to explain what is asked
+     * @return nonblank string
+     */
+    private String getValidUsername(String prompt){
+        while(true){
+            System.out.println("\n" + prompt);
+            String un = scanner.nextLine().trim();
+
+            if(un.isEmpty()){ //No real relevant constraint for this level of application
+                System.out.println("Invalid username");
+            }
+            else{
+                return un;
             }
         }
     }

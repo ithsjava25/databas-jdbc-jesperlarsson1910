@@ -174,19 +174,11 @@ public class Main {
         String ssn = getValidSSN("SSN: ");
         String pw = getValidPassword("Password: ");
 
-        String accName; //Default accountname is first three letters of first and last name
-        if(fn.length() <= 3 && ln.length() <=3){    //if both first and last name are 3 or fewer letters
-            accName = fn + ln;}                     //accountname is both full combined
-
-        else if (fn.length() <= 3){                 //if only first name is 3 or fewer letters
-            accName = fn + ln.substring(0, 2);      //accountname is full first name and first 3 from last name
-        }
-        else if(ln.length() <= 3){                  //if only last name is 3 or fewer letters
-           accName = fn.substring(0, 2) + ln;       //accountname is first 3 from first name and full last name
-        }
-        else{                                       //if both are longer than 3 accountname follows default pattern
-            accName = fn.substring(0, 2) + ln.substring(0, 2);
-        }
+        //Default accountname is first three letters of first and last name
+        //If one or both are shorter we use what's available
+        int fnN = Math.min(3, fn.length());
+        int lnN = Math.min(3, ln.length());
+        String accName = fn.substring(0, fnN) + ln.substring(0, lnN);
 
         //Check if the accountname exists
         Optional<AccountDTO> nameCheck;
